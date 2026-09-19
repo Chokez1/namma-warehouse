@@ -203,11 +203,20 @@ class GridpointSolver:
                         return None, None
                 min_dists = sub_D[np.arange(self.n), assigned_wh]
 
-        # Delivery Route Modeling: Mean 23 deliveries per driver shift
-        # Driver trip: 2 * d(hub, node) + 22 intra-neighborhood hops (0.4 km each = 8.8 km)
+        # Delivery Route Modeling:
+        # If batch_size >= 12, it represents deliveries per driver per day (range 15-30, default 23)
+        # If batch_size < 12, it represents deliveries per trip (milk-run batch routing)
         local_hop_km = 0.4
-        trip_distance = (2.0 * min_dists) + (22.0 * local_hop_km)
-        daily_fleet_km = float(np.sum(self.shifts * trip_distance))
+        if batch_size >= 12:
+            daily_driver_orders = float(batch_size)
+            trips = self.orders / daily_driver_orders
+            trip_distance = (2.0 * min_dists) + ((daily_driver_orders - 1.0) * local_hop_km)
+            daily_fleet_km = float(np.sum(trips * trip_distance))
+        else:
+            B = max(1, batch_size)
+            trips = self.orders / float(B)
+            trip_distance = (2.0 * min_dists) + ((B - 1.0) * local_hop_km)
+            daily_fleet_km = float(np.sum(trips * trip_distance))
 
         # Sustainability Metrics: Two-wheeler fuel efficiency ~35 km/L, 2.31 kg CO2/L
         daily_fuel_liters = daily_fleet_km / 35.0
@@ -503,8 +512,9 @@ class GridpointSolver:
             m_rent = (pt['price_per_sqft'] * property_size_sqft * 0.004) + 120000.0 * (pt['price_per_sqft'] / self.mean_price)
             a_rent = m_rent * 12.0
 
-            # Workforce: Mean 23 orders/day per driver at Rs 1,000/day
-            employees_req = int(np.ceil(site_orders / 23.0)) if site_orders > 0 else 0
+            # Workforce: Deliveries per driver per day (mean 23, or user-configured 15-30) @ Rs 1,000/day
+            daily_driver_orders = float(batch_size) if batch_size >= 12 else 23.0
+            employees_req = int(np.ceil(site_orders / daily_driver_orders)) if site_orders > 0 else 0
             daily_salary = float(employees_req * 1000.0)
             monthly_salary = float(daily_salary * 30.0)
             total_network_employees += employees_req
@@ -596,16 +606,17 @@ class GridpointSolver:
                 min_dispersion_km=min_dispersion_km
             )
             if res['status'] == 'ok' and res['costs'] is not None:
-                tot = res['costs']['total_annual']
-                if tot < lowest_cost:
-                    lowest_cost = tot
+                # Classic U-curve trade-off represents total operational economics = Facility Rent + Fleet Fuel:
+                total_economic = round(res['costs']['annual_rent'] + res['costs']['annual_fuel'], 2)
+                if total_economic < lowest_cost:
+                    lowest_cost = total_economic
                     best_p = k
                 tradeoff_points.append({
                     'num_warehouses': k,
                     'monthly_rent': res['costs']['monthly_rent'],
                     'annual_rent': res['costs']['annual_rent'],
                     'annual_fuel': res['costs']['annual_fuel'],
-                    'total_annual': tot,
+                    'total_annual': total_economic,
                     'feasible': True
                 })
             else:

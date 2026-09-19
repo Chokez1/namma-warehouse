@@ -551,7 +551,16 @@
 
     // ---- Range Sliders ----
     document.getElementById("numWarehouses").addEventListener("input", (e) => {
-      document.getElementById("numWarehousesVal").textContent = e.target.value;
+      const p = parseInt(e.target.value);
+      document.getElementById("numWarehousesVal").textContent = p;
+      // Recommend optimal spatial separation for p hubs
+      const dispInput = document.getElementById("minDispersion");
+      if (p <= 4) dispInput.value = "6.5";
+      else if (p <= 8) dispInput.value = "4.5";
+      else if (p <= 15) dispInput.value = "3.0";
+      else if (p <= 30) dispInput.value = "2.0";
+      else if (p <= 60) dispInput.value = "1.2";
+      else dispInput.value = "0.8";
     });
     document.getElementById("batchSize").addEventListener("input", (e) => {
       document.getElementById("batchSizeVal").textContent = e.target.value;
@@ -933,8 +942,12 @@
         </div>
 
         <div class="cost-row total">
-          <span class="cost-label">Total Facility Cost</span>
+          <span class="cost-label">Total Facility Budget</span>
           <span class="cost-value">${formatINR(costs.total_annual)}/yr</span>
+        </div>
+        <div class="cost-row" style="padding-top:4px;border:none">
+          <span class="cost-label" style="font-size:11px;color:var(--text-muted)">Annual Driver Payroll</span>
+          <span class="cost-value" style="font-size:11.5px;color:var(--text-muted)">${formatINR(costs.daily_driver_wages * 365)}/yr</span>
         </div>
       `;
 
