@@ -2,8 +2,8 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 
 class OptimizeRequest(BaseModel):
-    num_warehouses: int = Field(default=3, ge=1, le=8, description="Number of warehouses to place")
-    budget_monthly: Optional[float] = Field(default=None, description="Max monthly rent budget in INR (None = unconstrained)")
+    num_warehouses: int = Field(default=3, ge=1, le=100, description="Number of warehouses to place (1 to 100)")
+    budget_monthly: Optional[float] = Field(default=None, description="Max monthly facility rent budget in INR (None = unconstrained)")
     property_size_sqft: float = Field(default=2500.0, ge=100.0, description="Warehouse footprint in sq.ft (default: 2,500 sq.ft)")
     petrol_cost_per_km: float = Field(default=2.0, ge=0.5, description="Fuel cost rate in INR per km (default: 2.0)")
     batch_size: int = Field(default=3, ge=1, le=10, description="Deliveries made per trip (default: 3)")
@@ -25,6 +25,9 @@ class WarehouseDetail(BaseModel):
     monthly_rent: float
     annual_rent: float
     assigned_orders: float
+    employees_required: int
+    daily_salary: float
+    monthly_salary: float
     utilization_pct: float
     color: str
 
@@ -37,6 +40,12 @@ class CostBreakdown(BaseModel):
     daily_fleet_km: float
     daily_fuel: float
     annual_fuel: float
+    daily_fuel_liters: float
+    annual_co2_tons: float
+    avg_km_per_driver: float
+    total_employees: int
+    daily_driver_wages: float
+    monthly_driver_wages: float
     monthly_rent: float
     annual_rent: float
     total_annual: float
