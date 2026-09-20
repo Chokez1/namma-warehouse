@@ -60,6 +60,7 @@ class GridpointApiService {
   private currentResult: OptimizationResult | null = null;
   private backendStatus: BackendStatus = { online: false, checkedAt: 0 };
   private cityDataCache: CityApiResponse | null = null;
+  private tradeoffCache: Map<string, Array<{ count: number; cost: number; isOptimal: boolean }>> = new Map();
   private statusListeners: Array<(status: BackendStatus) => void> = [];
 
   constructor() {
@@ -173,6 +174,11 @@ class GridpointApiService {
       const dMin = this.currentConfig.minDispersionKm ?? 6.5;
       const evPct = this.currentConfig.evFleetPct ?? (this.currentConfig.evShare ?? 0);
 
+      const cacheKey = `${propSize}_${fuelPerKm}_${bSize}_${dMin}_${pCount}_${evPct}_${budgetInInr || '0'}`;
+      if (this.tradeoffCache.has(cacheKey)) {
+        return this.tradeoffCache.get(cacheKey)!;
+      }
+
       let url = `${API_BASE_URL}/tradeoff?property_size_sqft=${propSize}&petrol_cost_per_km=${fuelPerKm}&batch_size=${bSize}&min_dispersion_km=${dMin}&target_p=${pCount}&ev_fleet_pct=${evPct}`;
       if (budgetInInr) {
         url += `&budget_monthly=${budgetInInr}`;
@@ -182,13 +188,15 @@ class GridpointApiService {
       if (res.ok) {
         const data = await res.json();
         if (data.points && Array.isArray(data.points)) {
-          return data.points
+          const points = data.points
             .filter((pt: { num_warehouses: number; total_annual: number; feasible?: boolean }) => pt.feasible !== false && pt.total_annual > 0)
             .map((pt: { num_warehouses: number; total_annual: number; feasible?: boolean }) => ({
               count: pt.num_warehouses,
               cost: Number((pt.total_annual / 100000).toFixed(1)),
               isOptimal: pt.num_warehouses === pCount,
             }));
+          this.tradeoffCache.set(cacheKey, points);
+          return points;
         }
       }
     } catch (err) {
@@ -212,19 +220,8 @@ class GridpointApiService {
       ...config,
     };
 
-    const steps = [
-      'Connecting to Discrete Spatial Solver...',
-      'Evaluating 800 BBMP candidate nodes & rent benchmarks...',
-      'Enforcing D_min Spatial Dispersion & Regret Allocation...',
-      'Computing consolidated 3-drop milk-run routes & fuel burn...',
-      'Generating optimal logistics network...',
-    ];
-
     if (onProgress) {
-      for (let i = 0; i < steps.length; i++) {
-        onProgress(steps[i], i);
-        await new Promise((r) => setTimeout(r, 160));
-      }
+      onProgress('Evaluating discrete candidate locations & spatial constraints...', 0);
     }
 
     // Try FastAPI Backend
