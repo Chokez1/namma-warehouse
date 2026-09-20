@@ -25,7 +25,7 @@ RUN pip install --no-cache-dir -r backend/requirements.txt
 
 # Copy backend code, geospatial datasets, and compiled frontend bundle
 COPY backend/ ./backend/
-COPY "City data" ./"City data"/
+COPY ["City data", "./City data/"]
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # Set production environment defaults

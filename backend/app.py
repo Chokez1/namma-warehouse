@@ -157,4 +157,7 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     host = os.environ.get("HOST", "0.0.0.0")
     is_prod = os.environ.get("ENVIRONMENT", "development").lower() == "production"
-    uvicorn.run("app:app", host=host, port=port, reload=not is_prod)
+    if is_prod:
+        uvicorn.run(app, host=host, port=port)
+    else:
+        uvicorn.run("app:app", host=host, port=port, reload=True, app_dir=os.path.dirname(os.path.abspath(__file__)))
