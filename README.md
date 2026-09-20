@@ -465,6 +465,20 @@ This opens both the FastAPI Backend (port 8000) and Vite Frontend (port 3000) in
 
 ---
 
+### Docker Container Deployment (Production Turnkey)
+
+Build and run the entire unified stack (Frontend + Backend + 800 Ward Nodes) in a single container:
+```bash
+# Build image
+docker build -t namma-warehouse .
+
+# Run container
+docker run -p 8000:8000 namma-warehouse
+```
+Access the application directly at `http://localhost:8000` (Frontend UI) and `http://localhost:8000/docs` (API Docs).
+
+---
+
 ### Manual Launch (Two Terminals)
 
 #### Terminal 1: Start Python FastAPI Backend

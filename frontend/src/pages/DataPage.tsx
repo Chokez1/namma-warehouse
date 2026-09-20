@@ -125,7 +125,7 @@ export const DataPage: React.FC = () => {
                       {Math.round(pt.orders).toLocaleString('en-IN')}
                     </td>
                     <td className="py-3 px-4 text-right font-mono text-[#9E471A]">
-                      ₹{(pt.price ?? 45).toFixed(1)}
+                      ₹{Math.round(pt.price ?? pt.sqft ?? 45).toLocaleString('en-IN')}
                     </td>
                     <td className="py-3 px-4 text-right font-mono">
                       <span

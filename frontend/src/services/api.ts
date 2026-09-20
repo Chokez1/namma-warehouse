@@ -20,9 +20,10 @@ import {
 } from '../data/cityData';
 import { BENGALURU_800_POINTS } from '../data/rawBengaluruPoints';
 import { runOptimization } from '../utils/solver';
-import { calculateDeliveryTimeMinutes } from '../utils/geo';
+import { calculateDeliveryTimeMinutes, calculateDistanceKm } from '../utils/geo';
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) || '/api';
+const rawBase = ((import.meta.env.VITE_API_BASE_URL as string) || '').replace(/\/+$/, '');
+const API_BASE_URL = rawBase ? (rawBase.endsWith('/api') ? rawBase : `${rawBase}/api`) : '/api';
 
 export interface BackendStatus {
   online: boolean;
@@ -256,6 +257,9 @@ class GridpointApiService {
         ev_fleet_pct: this.currentConfig.evFleetPct !== undefined ? this.currentConfig.evFleetPct : (this.currentConfig.evShare ?? 0.0),
         picking_time_min: 3.0,
         target_sla_minutes: this.currentConfig.targetSlaMinutes || 10.0,
+        demand_multiplier: this.currentConfig.demandMultiplier || 1.0,
+        traffic_multiplier: this.currentConfig.trafficMultiplier || 1.0,
+        disabled_warehouse_ids: this.currentConfig.disabledWarehouseIds || [],
       };
 
       const res = await fetch(`${API_BASE_URL}/optimize`, {
@@ -290,11 +294,11 @@ class GridpointApiService {
             infeasibleMessage: backendRes.message || 'No feasible solution found under the specified constraints.',
             suggestedBudget: backendRes.suggested_budget,
             summaryMessage: `✗ INFEASIBLE: ${backendRes.message || backendRes.reason || 'Constraint violation'}`,
-            warehouses: this.currentResult?.warehouses || [],
+            warehouses: (this.currentResult?.warehouses || []).map((w) => ({ ...w, isSelected: false })),
             zones: this.currentResult?.zones || [],
-            assignments: this.currentResult?.assignments || [],
-            selectedWarehouseIds: this.currentResult?.selectedWarehouseIds || [],
-            kpi: this.currentResult?.kpi || {
+            assignments: [],
+            selectedWarehouseIds: [],
+            kpi: {
               optimalWarehouses: 0,
               totalCostLakhs: 0,
               avgDeliveryTimeMin: 0,
@@ -309,7 +313,7 @@ class GridpointApiService {
                 slaCompliancePercent: 0,
               },
             },
-            analytics: this.currentResult?.analytics || {
+            analytics: {
               costVsWarehouses: [],
               warehouseUtilization: [],
               costBreakdown: [],
@@ -318,8 +322,8 @@ class GridpointApiService {
               co2ByWarehouse: [],
             },
             executionTimeMs: backendRes.meta?.solve_time_ms || 0,
-            nodeAssignments: this.currentResult?.nodeAssignments,
-            nodeSpokes: this.currentResult?.nodeSpokes,
+            nodeAssignments: {},
+            nodeSpokes: [],
           };
           this.currentResult = infeasibleResult;
           return infeasibleResult;
@@ -392,6 +396,13 @@ class GridpointApiService {
       annual_fuel_savings?: number;
       annual_co2_saved_tons?: number;
       total_employees?: number;
+      baseline?: {
+        total_cost_lakhs: number;
+        avg_delivery_time_min: number;
+        fuel_consumed_liters: number;
+        co2_emissions_tons: number;
+        sla_compliance_percent: number;
+      };
     };
     meta?: {
       solve_time_ms?: number;
@@ -444,12 +455,47 @@ class GridpointApiService {
       assignmentsMap.set(a.demand_id, a);
     });
 
-    // Map demand zones
+    // Map demand zones: resolve Zone ID (Z01-Z20) to closest discrete BBMP coordinate node assignment
     const updatedZones: DemandZone[] = this.demandZones.map((z) => {
-      const assignment = assignmentsMap.get(z.id) || backendRes.assignments[0];
-      const dist = assignment ? assignment.distance_km : 12.0;
-      const deliveryTime = calculateDeliveryTimeMinutes(dist, z.trafficIndex);
-      const targetWhId = assignment ? assignment.warehouse_id : selectedWarehouseIds[0];
+      // 1. Direct match if demand_id equals zone id (e.g. custom zones)
+      let assignment = assignmentsMap.get(z.id);
+
+      // 2. Spatial match: find the nearest candidate node in BENGALURU_800_POINTS
+      if (!assignment) {
+        let bestDistSq = Infinity;
+        let closestPtId = '';
+        for (const pt of BENGALURU_800_POINTS) {
+          const dSq = (pt.lat - z.lat) ** 2 + (pt.lng - z.lng) ** 2;
+          if (dSq < bestDistSq) {
+            bestDistSq = dSq;
+            closestPtId = pt.id;
+          }
+        }
+        if (closestPtId) {
+          assignment = assignmentsMap.get(closestPtId);
+        }
+      }
+
+      // 3. Fallback: find nearest selected warehouse
+      let targetWhId = assignment ? assignment.warehouse_id : selectedWarehouseIds[0];
+      let dist = assignment ? assignment.distance_km : 12.0;
+      if (!assignment) {
+        let minDist = Infinity;
+        selectedWarehouses.forEach((w) => {
+          const d = calculateDistanceKm(z.lat, z.lng, w.lat, w.lng) * 1.35;
+          if (d < minDist) {
+            minDist = d;
+            targetWhId = w.id;
+          }
+        });
+        dist = minDist;
+      }
+
+      const deliveryTime = calculateDeliveryTimeMinutes(
+        dist,
+        z.trafficIndex,
+        this.currentConfig.trafficMultiplier || 1.0
+      );
 
       return {
         ...z,
@@ -588,13 +634,21 @@ class GridpointApiService {
       annualCo2SavedTons: backendRes.costs.annual_co2_saved_tons,
       totalEmployees: backendRes.costs.total_employees,
       evFleetPct: backendRes.costs.ev_fleet_pct,
-      baseline: {
-        totalCostLakhs: Number((totalCostLakhs * 1.24).toFixed(1)),
-        avgDeliveryTimeMin: Number((avgDeliveryTime * 1.35).toFixed(1)),
-        fuelConsumedLiters: Math.round(annualFuelLiters * 1.29),
-        co2EmissionsTons: Number((co2Tons * 1.3).toFixed(1)),
-        slaCompliancePercent: Math.max(1.0, Number(((backendRes.costs.sla_compliance_pct ?? 10) * 0.65).toFixed(1))),
-      },
+      baseline: backendRes.costs.baseline
+        ? {
+            totalCostLakhs: Number(backendRes.costs.baseline.total_cost_lakhs.toFixed(1)),
+            avgDeliveryTimeMin: Number(backendRes.costs.baseline.avg_delivery_time_min.toFixed(1)),
+            fuelConsumedLiters: Math.round(backendRes.costs.baseline.fuel_consumed_liters),
+            co2EmissionsTons: Number(backendRes.costs.baseline.co2_emissions_tons.toFixed(1)),
+            slaCompliancePercent: Number(backendRes.costs.baseline.sla_compliance_percent.toFixed(1)),
+          }
+        : {
+            totalCostLakhs: Number((totalCostLakhs * 1.24).toFixed(1)),
+            avgDeliveryTimeMin: Number((avgDeliveryTime * 1.35).toFixed(1)),
+            fuelConsumedLiters: Math.round(annualFuelLiters * 1.29),
+            co2EmissionsTons: Number((co2Tons * 1.3).toFixed(1)),
+            slaCompliancePercent: Math.max(1.0, Number(((backendRes.costs.sla_compliance_pct ?? 10) * 0.65).toFixed(1))),
+          },
     };
 
     // Build nodeAssignments lookup and nodeSpokes for all 800 demand points (1:1 with index.html)
@@ -684,8 +738,9 @@ class GridpointApiService {
       scenarioConfig.trafficMultiplier = 1 + scenario.percentageChange / 100;
       if (scenario.percentageChange >= 30) scenarioConfig.trafficLevel = 'high';
     } else if (scenario.type === 'fuel' && scenario.percentageChange) {
-      scenarioConfig.fuelPrice =
-        this.currentConfig.fuelPrice * (1 + scenario.percentageChange / 100);
+      const fuelMult = 1 + scenario.percentageChange / 100;
+      scenarioConfig.fuelPrice = this.currentConfig.fuelPrice * fuelMult;
+      scenarioConfig.petrolCostPerKm = Number(((this.currentConfig.petrolCostPerKm ?? 2.0) * fuelMult).toFixed(2));
     } else if (scenario.type === 'warehouse_failure' && scenario.disabledWarehouseId) {
       scenarioConfig.disabledWarehouseIds = [
         ...(this.currentConfig.disabledWarehouseIds || []),

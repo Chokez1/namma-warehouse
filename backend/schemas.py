@@ -14,6 +14,9 @@ class OptimizeRequest(BaseModel):
     ev_fleet_pct: float = Field(default=0.0, ge=0.0, le=100.0, description="Percentage of delivery fleet transitioned to Electric 2-Wheelers (0 to 100%)")
     picking_time_min: float = Field(default=3.0, ge=0.0, le=15.0, description="Dark store picking and packing time in minutes (default: 3.0)")
     target_sla_minutes: float = Field(default=10.0, ge=5.0, le=60.0, description="Quick-Commerce SLA target in minutes (default: 10.0)")
+    demand_multiplier: float = Field(default=1.0, ge=0.1, le=5.0, description="Demand scaling multiplier for scenario simulation (default: 1.0)")
+    traffic_multiplier: float = Field(default=1.0, ge=0.5, le=3.0, description="Traffic impedance scaling multiplier (default: 1.0)")
+    disabled_warehouse_ids: List[str] = Field(default=[], description="Warehouse candidate point IDs disabled due to disruptions")
 
 class WarehouseDetail(BaseModel):
     id: str
@@ -70,6 +73,7 @@ class CostBreakdown(BaseModel):
     daily_fuel_savings: float = 0.0
     annual_fuel_savings: float = 0.0
     annual_co2_saved_tons: float = 0.0
+    baseline: Optional[Dict[str, Any]] = None
 
 class OptimizeResponse(BaseModel):
     status: str

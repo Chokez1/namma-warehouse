@@ -287,83 +287,57 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
         </div>
       </div>
 
-      {/* Row 2: Features Nav & Tour */}
+      {/* Row 2: Direct Primary Navigation & Telemetry */}
       <div className="header-row2">
         <div className="header-row2-inner">
-          {/* Bento Trigger */}
-          <div
-            style={{ position: 'relative' }}
-            id="features-trigger-wrap"
-            onMouseEnter={handleMouseEnterDD}
-            onMouseLeave={handleMouseLeaveDD}
-          >
+          {/* Main Navigation Tabs */}
+          <nav className="header-nav-tabs" aria-label="Main Navigation">
+            {FEATURES.map((f) => {
+              const isActive = f.id === activeTab;
+              return (
+                <button
+                  key={f.id}
+                  className={`nav-tab-btn ${isActive ? 'active' : ''}`}
+                  onClick={() => onSelectTab(f.id)}
+                  id={`nav-tab-${f.id}`}
+                >
+                  <span className="nav-tab-icon">{renderIcon(f.iconName, 14)}</span>
+                  <span className="nav-tab-label">{f.label}</span>
+                  {f.badge && <span className="nav-tab-badge">{f.badge}</span>}
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* Right: Engine Telemetry & Tour */}
+          <div className="header-row2-right">
             <div
-              className="features-trigger"
-              id="features-trigger"
-              onClick={onOpenDrawer}
+              className="engine-telemetry-pill"
+              title="Spatial solver loaded with 800 BBMP coordinate nodes"
             >
-              <div className="bento-icon">
-                <svg width="11" height="11" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <span className="engine-pulse" />
+              <span className="engine-text">BBMP 800 Nodes Synced</span>
+            </div>
+
+            <button
+              className="modules-drawer-btn"
+              onClick={onOpenDrawer}
+              title="View all module descriptions"
+            >
+              <div className="bento-icon-small">
+                <svg width="10" height="10" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2">
                   <rect x="2.5" y="2.5" width="6" height="6" rx="1.8" />
                   <rect x="11.5" y="2.5" width="6" height="6" rx="1.8" />
                   <rect x="2.5" y="11.5" width="6" height="6" rx="1.8" />
                   <rect x="11.5" y="11.5" width="6" height="6" rx="1.8" />
                 </svg>
               </div>
-              <span className="features-label">Features</span>
-              <span className="active-feature-badge">
-                <span className="active-dot" />
-                <span>{currentFeature.label}</span>
-              </span>
-            </div>
+              <span className="hidden sm:inline">Overview</span>
+            </button>
 
-            {/* Hover bridge */}
-            <div style={{ height: '6px', width: '100%' }} />
-
-            {/* Dropdown menu */}
-            {showDropdown && (
-              <div className="features-dropdown" id="features-dd">
-                <div className="dd-header">
-                  <span className="dd-title">Select Feature</span>
-                  <span className="dd-count">{FEATURES.length} Modules</span>
-                </div>
-                <div className="dd-list">
-                  {FEATURES.map((f) => {
-                    const isActive = f.id === activeTab;
-                    return (
-                      <button
-                        key={f.id}
-                        className={`dd-item ${isActive ? 'active' : ''}`}
-                        onClick={() => {
-                          onSelectTab(f.id);
-                          setShowDropdown(false);
-                        }}
-                      >
-                        <div className="dd-item-left">
-                          <div className="dd-icon">{renderIcon(f.iconName, 15)}</div>
-                          <div>
-                            <div className="dd-name">
-                              {f.label}
-                              {f.badge && <span className="dd-badge">{f.badge}</span>}
-                              {isActive && <span className="dd-active-badge">Active</span>}
-                            </div>
-                            <div className="dd-desc">{f.shortDesc}</div>
-                          </div>
-                        </div>
-                        {isActive && <Check size={14} className="check-icon" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Right: Tour Button */}
-          <div className="header-actions">
             <button className="tour-btn" onClick={onOpenTour}>
               <Sparkles size={13} color="#92400E" />
-              Interactive Tour
+              <span>Interactive Tour</span>
             </button>
           </div>
         </div>

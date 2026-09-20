@@ -54,24 +54,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount React 19 Frontend Dashboard if compiled
+# Mount React Frontend Dashboard if compiled
 FRONTEND_DIST = os.path.join(BASE_DIR, "frontend", "dist")
 if os.path.exists(FRONTEND_DIST):
+    assets_dir = os.path.join(FRONTEND_DIST, "assets")
+    if os.path.exists(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+    data_dir = os.path.join(FRONTEND_DIST, "data")
+    if os.path.exists(data_dir):
+        app.mount("/data", StaticFiles(directory=data_dir), name="data")
     app.mount("/dashboard", StaticFiles(directory=FRONTEND_DIST, html=True), name="dashboard")
 
-@app.get("/", summary="Health Check")
-def root():
+@app.get("/health", summary="Health Check")
+@app.get("/api/health", summary="API Health Check")
+def health_check():
     return {
         "status": "online",
         "service": "GRIDPOINT Discrete Spatial Optimization API",
         "version": "2.0.0",
         "method": "Discrete Capacitated Facility Location with Spatial Dispersion",
-        "endpoints": ["/dashboard", "/app", "/api/city", "/api/optimize", "/api/tradeoff", "/docs"]
+        "endpoints": ["/api/health", "/api/city", "/api/optimize", "/api/tradeoff", "/docs"]
     }
 
+@app.get("/", summary="Dashboard Application")
 @app.get("/app", summary="Visualization Frontend")
 def serve_frontend():
-    """Serves the frontend dashboard."""
+    """Serves the frontend single-page application."""
     index_path = os.path.join(FRONTEND_DIST, "index.html")
     if os.path.exists(index_path):
         return FileResponse(
@@ -83,7 +91,7 @@ def serve_frontend():
                 "Expires": "0"
             }
         )
-    return {"status": "ok", "message": "Frontend running via Vite at http://localhost:3000 or run 'npm run build' in frontend/"}
+    return health_check()
 
 @app.get("/api/city", response_model=CityResponse, summary="Fetch City Grid & Metadata")
 def get_city():
@@ -114,7 +122,10 @@ def optimize_network(req: OptimizeRequest):
         capacity_per_warehouse=req.capacity_per_warehouse,
         ev_fleet_pct=req.ev_fleet_pct,
         picking_time_min=req.picking_time_min,
-        target_sla_minutes=req.target_sla_minutes
+        target_sla_minutes=req.target_sla_minutes,
+        demand_multiplier=req.demand_multiplier,
+        traffic_multiplier=req.traffic_multiplier,
+        disabled_warehouse_ids=req.disabled_warehouse_ids
     )
     return result
 
@@ -143,4 +154,7 @@ def get_tradeoff(
     )
 
 if __name__ == "__main__":
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    port = int(os.environ.get("PORT", 8000))
+    host = os.environ.get("HOST", "0.0.0.0")
+    is_prod = os.environ.get("ENVIRONMENT", "development").lower() == "production"
+    uvicorn.run("app:app", host=host, port=port, reload=not is_prod)
